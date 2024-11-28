@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "scripts": {
+    "serve": "node index.js",
+    "test": "node tests/types.js"
+  }
+}

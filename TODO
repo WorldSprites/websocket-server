@@ -1,0 +1,5 @@
+ - websocket streams?
+ - disconnect messages?
+ - userlist - half finished
+ - some sort of packet verification system, forwarding any packet without checking it is kinda insecure
+ - distinguish between responses and packets
