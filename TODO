@@ -1,5 +1,3 @@
  - websocket streams?
- - disconnect messages?
- - userlist - half finished
  - some sort of packet verification system, forwarding any packet without checking it is kinda insecure
- - distinguish between responses and packets
+ - maybe a unique id for each user in case someone changes their username before a packet is recieved?

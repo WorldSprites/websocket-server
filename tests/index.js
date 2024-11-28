@@ -65,25 +65,58 @@ client.on('close', function clear() {
 client.on("message", (rawData) => {
     /** @type {import("../index.js").ServerResponse} */
     const data = JSON.parse(rawData)
+    switch (data.packetState) {
+        case 0: { // server response to a packet we sent
+            switch (data.originType) {
+                case "room": {
+                    console.log("connected to room successfully with response", data)
+                    setUsername("skibidi toilet")
+                    break;
+                }
+                case "username": {
+                    console.log("set username successfully with response", data)
+                    sendPacket({
+                        hello: "world",
+                        ohio: "rizzler"
+                    }, true)
+                    break;
+                }
+                case "packet": {
+                    console.log("packet sent unsuccessfully with response", data)
+                    console.log("Tests completed successfully")
+                    break
+                }
 
-    switch (data.originType) {
-        case "room": {
-            console.log("connected to room successfully with response", data)
-            setUsername("skibidi toilet")
-            break;
-        }
-        case "username": {
-            console.log("set username successfully with response", data)
-            sendPacket({
-                hello: "world",
-                ohio: "rizzler"
-            }, true)
-            break;
-        }
-        case "packet": {
-            console.log("packet sent successfully with response", data)
-            console.log("Tests completed successfully")
+                default: {
+                    console.error("Invalid response packet recieved!", data)
+                }
+            }
+
             break
         }
+        
+        case 1: { // the server is sending a packet not initialized by us
+            switch (data.command.type) {
+                case "packet": {
+                    console.log("Recieved packet from server", data)
+                    break;
+                }
+                case "userlist": {
+                    console.log("Recieved userlist from server", data)
+                    break;
+                }
+
+                default: {
+                    console.error("Invalid server packet recieved!",data)
+                }
+            }
+
+            break;
+        }
+
+        default: {
+            console.error("Recieved invalid packet!", data)
+        }
     }
+
 })

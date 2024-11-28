@@ -4,6 +4,6 @@
   },
   "scripts": {
     "serve": "node index.js",
-    "test": "node tests/types.js"
+    "test": "node tests/index.js"
   }
 }

@@ -1,7 +1,9 @@
 const KEEPALIVETIME = 12500 // in milliseconds, also used to update the userlist
 const MAXPACKETSIZE = 2500  // in bytes
 const MAXUSERNAMESIZE = 200 // in bytes
-const port = 1958
+const port = 1958 // port  the server runs on
+const LOGGING = true // whether to log debug stuff
+
 
 const WS = require("ws")
 const crypto = require("crypto")
@@ -50,6 +52,14 @@ const PacketTypes = {
     userlist: "userlist"
 }
 
+/**
+ * @readonly
+ * @enum {Number}
+ */
+const PacketStates = {
+    response: 0,
+    packet: 1
+}
 
 /**
  * @typedef Room
@@ -65,6 +75,7 @@ const PacketTypes = {
  * @property {String[] | null | Number[] | true} targets Affected targets, if a list of strings forward to those usernames. If a number, forward to all clients in that room id. If true, forward to all clients in the sender's current room. If null don't forward.
  * @property {*} data The data to send
  * @property {Number} id The packet id, used to identify handshake stuff. Date.now()
+ * @property {Number} packetState The packet type. 0 = response, 1 = packet
  */
 
 /**
@@ -74,6 +85,8 @@ const PacketTypes = {
  * @property {*} command.meta Metadata about the command
  * @property {*} data The data to send
  * @property {Number} id The packet id, used to identify handshake stuff. Date.now()
+ * @property {Number} packetState The packet type. 0 = response, 1 = packet
+ * @property {String} sender The user who sent this packet. null = server.
  */
 
 
@@ -85,6 +98,7 @@ const PacketTypes = {
  * @property {Number} id The packet id this is responding to, used to identify handshake stuff
  * @property {ResponseTypes} type The type of response this is.
  * @property {PacketTypes} originType The type of packet that initiated this packet
+ * @property {Number} packetState The packet type. 0 = response, 1 = packet
  */
 
 /**
@@ -94,6 +108,7 @@ const PacketTypes = {
  * @property {Number} id The packet id this is responding to, used to identify handshake stuff
  * @property {ResponseTypes} type The type of response this is.
  * @property {PacketTypes} originType The type of packet that initiated this packet
+ * @property {Number} packetState The packet type. 0 = response, 1 = packet
  */
 
 
@@ -121,7 +136,8 @@ function createResponse(status, data, id, type, originType) { // this is a funct
         data: data,
         id: id,
         type: type,
-        originType: originType
+        originType: originType,
+        packetState: 0
     }
 }
 
@@ -132,11 +148,13 @@ function createResponse(status, data, id, type, originType) { // this is a funct
  * @param {Number} id Date.now()
  * @returns 
  */
-function createServerPacket(command, data, id) {
+function createServerPacket(command, data, id, sender) {
     return {
         command: command,
         data: data,
-        id: id
+        id: id,
+        packetState: 1,
+        sender: sender
     }
 }
 
@@ -211,7 +229,7 @@ function validateIncomingPacket(data, sender) {
         }
 
         default: {
-            console.error("Unimplemented packet type " + data.command.type)
+            if (LOGGING) console.error("Unimplemented packet type " + data.command.type)
             return 501 // whoopsies i frogot to implement it
         }
     }
@@ -224,8 +242,8 @@ wss.on("connection", (ws, req) => {
     ws.xRoom = -1 // not connected to a room. x(someName) denotes a non standard websocket value.
     ws.xUsername = crypto.randomUUID() // generate a uuid we can use to reference this connection until they set a username
     USERS[ws.xUsername] = ws
-    ws.on("error", console.error)
-    ws.on("pong", () => { this.isAlive = true })
+    ws.on("error", (event) => { if (LOGGING) console.error(event) })
+    ws.on("pong", () => { ws.isAlive = true })
     ws.on("close", (code, reason) => {
         delete USERS[ws.xUsername]
         if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections, ROOMS[ws.xRoom].connections.indexOf(ws.xUsername))
@@ -239,26 +257,35 @@ wss.on("connection", (ws, req) => {
             data = JSON.parse(event)
         }
         catch {
-            console.error("Invalid message")
+            if (LOGGING) console.error("Invalid message")
         }
-        console.log("recieved message with data", data)
+        if (LOGGING) console.log("recieved message with data", data)
         const valid = validateIncomingPacket(data, ws)
         if (valid >= 300) return ws.send(JSON.stringify(createResponse(valid, null, data.id, "validate", data.command.type))) // errored, send a response and return
+
         switch (data.command.type) {
             case "packet": {
                 if (Array.isArray(data.targets)) {
                     if (typeof data.targets[0] == "number") { // array of rooms   
                         data.targets.forEach((room) => {
-                            ROOMS[room].connections.forEach((connection) => connection.send(JSON.stringify(createResponse(valid,data.data,data.id,"forward",data.command.type)))) // go through each connection in the room and forward the packet
+                            ROOMS[room].connections.forEach((connection) => connection.send(
+                                JSON.stringify(
+                                    createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUsername)
+                                )
+                            )) // go through each connection in the room and forward the packet
                         })
                     }
                     else { // array of users
-                        data.targets.forEach((connection) => connection.send(JSON.stringify(createResponse(valid,data.data,data.id,"forward",data.command.type)))) // go through each user and forward the packet
+                        data.targets.forEach((connection) => connection.send(
+                            JSON.stringify(
+                                createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUsername)
+                            )
+                        )) // go through each user and forward the packet
                     }
                 }
 
                 else { // data.targets === true, which means forward to everyone in the current room
-                    ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createResponse(valid,data.data,data.id,"forward",data.command.type)))) // go through each connection in the user's room and forward the packet
+                    ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUsername)))) // go through each connection in the user's room and forward the packet
                 }
                 
                 break;
@@ -292,7 +319,7 @@ wss.on("connection", (ws, req) => {
 const keepAliveInterval = setInterval(function ping() {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate()
-        
+        if (LOGGING) console.log("Sent keepalive packet to " + ws.xUsername)
         ws.isAlive = false
         ws.ping() // websocket clients automatically return pongs, which will trigger the ws.on("pong") event.
         ws.send(JSON.stringify(createServerPacket({
@@ -300,18 +327,19 @@ const keepAliveInterval = setInterval(function ping() {
                 meta: null
             },
             Object.values(USERS).map((user) => user.xUsername), 
-            Date.now()
+            Date.now(),
+            null
         )))
     })
 }, KEEPALIVETIME)
 
 wss.on("close", () => {
-    console.error("connection closed")
+    if (LOGGING) console.error("connection closed")
     clearInterval(keepAliveInterval)
 })
 
 /**
  * @exports { ClientPacket, ServerPacket, ClientResponse, ServerResponse }
  */
-module.exports = { ResponseTypes, PacketTypes, port }
+module.exports = { ResponseTypes, PacketTypes, PacketStates, port }
 console.log("Websocket server now running on ws://localhost:" + String(port))
