@@ -1,6 +1,6 @@
 const WS = require("ws")
 // const { PacketTypes, ResponseTypes, port } = require("../index.js")
-const client = new WS.WebSocket("ws://localhost:1958"/* + String(port)*/)
+const client = new WS.WebSocket("ws://localhost:1958?room=1125"/* + String(port)*/)
 
 function setUsername(name) {
     if (client.OPEN) client.send(JSON.stringify({
@@ -41,10 +41,10 @@ function sendPacket(data, targets) {
 client.on("error", console.error)
 client.on("open", () => {
     heartbeat()
-    setTimeout(() => {
+    /*setTimeout(() => {
         connectToRoom(1125)
         console.log("connecting to room...")
-    }, 35)
+    }, 35)*/
 })
 
 function heartbeat() {

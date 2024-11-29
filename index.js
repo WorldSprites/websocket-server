@@ -160,6 +160,21 @@ function createServerPacket(command, data, id, sender) {
 
 /**
  * 
+ * @param {Number} room The room to validate
+ * @param {WS.WebSocket} sender The sender of the packet
+ * @returns {Number} An http status code corresponding to the success of the connection
+ */
+function validateRoom(room, sender) {
+    if (typeof room !== "number") return 400 // the room need to be a number
+    if (sender.xRoom === room) return 304 // already connected to that room
+    if (!Object.prototype.hasOwnProperty.call(ROOMS, room)) valid = 201 // room will be created
+    
+    // yeah probably fine then
+    return 200
+}
+
+/**
+ * 
  * @param {ClientPacket} data The packet to validate
  * @param {WS.WebSocket} sender The sender of the packet
  * @returns {Boolean}
@@ -170,7 +185,7 @@ function validateIncomingPacket(data, sender) {
     if (!data.command.type) return 400 // command must have a command type
     if (!Object.prototype.hasOwnProperty.call(PacketTypes, data.command.type)) return 400 // invalid packet
 
-    if (!data?.targets) return 400 // packet must have at least one target or null
+    if (data?.targets !== undefined) return 400 // packet must have at least one target or null
     if (!data.id) return 400 // packet must have an id
     const targetsType = typeof data.targets
     if (!["object", "boolean"].includes(targetsType)) return 400 // targets must be an array, null, or true
@@ -211,9 +226,9 @@ function validateIncomingPacket(data, sender) {
         }
 
         case "room": {
-            if (typeof data.targets[0] !== "number") return 400 // the room need to be a number
-            if (sender.xRoom === data.targets[0]) return 304 // already connected to that room
-            if (!Object.prototype.hasOwnProperty.call(ROOMS, data.targets[0])) valid = 201 // room will be created
+            const roomValid = validateRoom(data.targets[0], sender)
+            if (roomValid >= 300) return roomValid // if there was an error here return it
+            valid = roomValid // otherwise use this as the validity
             
             // yeah probably fine then
             break;
@@ -248,6 +263,27 @@ wss.on("connection", (ws, req) => {
         delete USERS[ws.xUsername]
         if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections, ROOMS[ws.xRoom].connections.indexOf(ws.xUsername))
     })
+    
+    if (LOGGING) console.log("connection from url ", req.url)
+    const url = new URL(`https://localhost:${port}` + req.url)
+    if (url.searchParams.has("room")) {
+        const room = Number(url.searchParams.get("room")) // get the room and cast it to a number
+        if (LOGGING) console.log("Recieved request to initially connect to room " + String(room))
+        const roomValid = validateRoom(room, ws)
+        if (roomValid >= 300 && ws.OPEN) return ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room))) // if the room is invalid send an error and exit the function
+        
+
+        if (!Object.prototype.hasOwnProperty(ROOMS,room)) ROOMS[room] = {
+            connections: [],
+            startTime: Date.now()
+        }
+        ROOMS[room].connections.push(ws.xUsername)
+        ws.xRoom = room
+        ws.send(JSON.stringify(createResponse(valid, null, null, ResponseTypes.validate, PacketTypes.room)))
+        if (LOGGING) console.log("Connected client to initial room")
+    }
+
+
     ws.on("message", (event) => {
         /**
          * @type {ClientPacket}
