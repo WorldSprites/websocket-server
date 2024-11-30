@@ -1,3 +1,4 @@
  - websocket streams?
  - some sort of packet verification system, forwarding any packet without checking it is kinda insecure
  - maybe a unique id for each user in case someone changes their username before a packet is recieved?
+ - seperate initial room connection type from explicit connections

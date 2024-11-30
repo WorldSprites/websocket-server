@@ -1,7 +1,7 @@
-# websocket-server
+# worldpipe
  
-a semi barebones websocket server similar to [cloudlink](https://github.com/MikeDev101/cloudlink)
+a semi barebones websocket server for [worldsprites](https://github.com/WorldSprites) similar to [cloudlink](https://github.com/MikeDev101/cloudlink)
 
 # docmuenmtatnoi(documentation)
 
-todo
+remember to do this

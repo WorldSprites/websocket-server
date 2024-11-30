@@ -1,6 +1,8 @@
 const WS = require("ws")
 // const { PacketTypes, ResponseTypes, port } = require("../index.js")
-const client = new WS.WebSocket("ws://localhost:1958?room=1125"/* + String(port)*/)
+const client = new WS.WebSocket("ws://localhost:1958"/* + String(port)*/)
+let successes = 0
+
 
 function setUsername(name) {
     if (client.OPEN) client.send(JSON.stringify({
@@ -25,6 +27,20 @@ function connectToRoom(room) {
         id: Date.now()
     }))
 }
+const tests = [
+    () => { console.log("connecting to room..."); connectToRoom(1295) },
+    () => { console.log("setting username..."); setUsername("skibidi toilet") },
+    () => {
+        console.log("sending dummy packet...")
+        sendPacket({
+            hello: "world",
+            ohio: "rizzler"
+        }, true)
+    }
+]
+const numTests = tests.length
+
+
 
 function sendPacket(data, targets) {
     if (client.OPEN) client.send(JSON.stringify({
@@ -41,10 +57,9 @@ function sendPacket(data, targets) {
 client.on("error", console.error)
 client.on("open", () => {
     heartbeat()
-    /*setTimeout(() => {
-        connectToRoom(1125)
-        console.log("connecting to room...")
-    }, 35)*/
+    setTimeout(() => {
+        tests[0]()
+    }, 35)
 })
 
 function heartbeat() {
@@ -69,22 +84,40 @@ client.on("message", (rawData) => {
         case 0: { // server response to a packet we sent
             switch (data.originType) {
                 case "room": {
-                    console.log("connected to room successfully with response", data)
-                    setUsername("skibidi toilet")
+                    if (data.status >= 300) {
+                        console.error("Failed to connect to room, recieved response", data)
+                    }
+                    else {
+                        console.log("connected to room successfully with response", data)
+                        successes++
+                    }
                     break;
                 }
                 case "username": {
-                    console.log("set username successfully with response", data)
-                    sendPacket({
-                        hello: "world",
-                        ohio: "rizzler"
-                    }, true)
+                    if (data.status >= 300) {
+                        console.error("Failed to set username, recieved response", data)
+                    }
+                    else {
+                        console.log("set username successfully with response", data)
+                        successes++
+                    }
                     break;
                 }
                 case "packet": {
-                    console.log("packet sent unsuccessfully with response", data)
-                    console.log("Tests completed successfully")
+                    numTests++
+                    if (data?.status >= 300) {
+                        console.log("packet sent unsuccessfully with response", data)
+                    }
+                    else {
+                        // successful packet would be a data.packetState of 1 and a data.command.type of "packet", see below.
+                    }
+                    
                     break
+                }
+
+                case "INVALID": {
+                    console.error("A packet was sent with an invalid type or something, recieved response", data)
+                    break;
                 }
 
                 default: {
@@ -98,6 +131,7 @@ client.on("message", (rawData) => {
         case 1: { // the server is sending a packet not initialized by us
             switch (data.command.type) {
                 case "packet": {
+                    successes++
                     console.log("Recieved packet from server", data)
                     break;
                 }
@@ -119,4 +153,6 @@ client.on("message", (rawData) => {
         }
     }
 
+    if (data?.command?.type !== "userlist" && tests.length > 0) tests.shift()() // this is probably some of the freakiest syntax i have ever used.
+    else if (tests.length < 1 && data?.command?.type !== "userlist") console.log(`\n\nTesting completed with ${successes}/${numTests} tests successful`)
 })

@@ -260,6 +260,7 @@ wss.on("connection", (ws, req) => {
     ws.on("error", (event) => { if (LOGGING) console.error(event) })
     ws.on("pong", () => { ws.isAlive = true })
     ws.on("close", (code, reason) => {
+        if (LOGGING) console.log(`Closed connection to ${ws.xUsername} with code ${code} and reason "${reason}"`)
         delete USERS[ws.xUsername]
         if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections, ROOMS[ws.xRoom].connections.indexOf(ws.xUsername))
     })
@@ -297,7 +298,7 @@ wss.on("connection", (ws, req) => {
         }
         if (LOGGING) console.log("recieved message with data", data)
         const valid = validateIncomingPacket(data, ws)
-        if (valid >= 300) return ws.send(JSON.stringify(createResponse(valid, null, data.id, "validate", data.command.type))) // errored, send a response and return
+        if (valid >= 300) return ws.send(JSON.stringify(createResponse(valid, null, data?.id, "validate", data?.command?.type ?? "INVALID"))) // errored, send a response and return
 
         switch (data.command.type) {
             case "packet": {
