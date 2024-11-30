@@ -2,6 +2,8 @@ const WS = require("ws")
 // const { PacketTypes, ResponseTypes, port } = require("../index.js")
 const client = new WS.WebSocket("ws://localhost:1958?roomid=1234"/* + String(port)*/)
 let successes = 0
+console.log(client.url)
+const INITIALCONNECTION = new URL(client.url).searchParams.has("roomid")
 
 
 function setUsername(name) {
@@ -57,7 +59,7 @@ function sendPacket(data, targets) {
 client.on("error", console.error)
 client.on("open", () => {
     heartbeat()
-    setTimeout(() => {
+    if (!INITIALCONNECTION) setTimeout(() => {
         tests[0]()
     }, 35)
 })
@@ -154,5 +156,5 @@ client.on("message", (rawData) => {
     }
 
     if (data?.command?.type !== "userlist" && tests.length > 0) tests.shift()() // this is probably some of the freakiest syntax i have ever used.
-    else if (tests.length < 1 && data?.command?.type !== "userlist") console.log(`\n\nTesting completed with ${successes}/${numTests} tests successful`)
+    else if (tests.length < 1 && data?.command?.type !== "userlist") console.log(`\n\nTesting completed with ${successes}/${numTests + Number(INITIALCONNECTION)} tests successful`)
 })
