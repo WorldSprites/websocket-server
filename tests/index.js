@@ -1,6 +1,6 @@
 const WS = require("ws")
 // const { PacketTypes, ResponseTypes, port } = require("../index.js")
-const client = new WS.WebSocket("ws://localhost:1958"/* + String(port)*/)
+const client = new WS.WebSocket("ws://localhost:1958?roomid=1234"/* + String(port)*/)
 let successes = 0
 
 
@@ -28,7 +28,7 @@ function connectToRoom(room) {
     }))
 }
 const tests = [
-    () => { console.log("connecting to room..."); connectToRoom(1295) },
+    // () => { console.log("connecting to room..."); connectToRoom(1295) },
     () => { console.log("setting username..."); setUsername("skibidi toilet") },
     () => {
         console.log("sending dummy packet...")

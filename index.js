@@ -267,8 +267,8 @@ wss.on("connection", (ws, req) => {
     
     if (LOGGING) console.log("connection from url ", req.url)
     const url = new URL(`https://localhost:${port}` + req.url)
-    if (url.searchParams.has("room")) {
-        const room = Number(url.searchParams.get("room")) // get the room and cast it to a number
+    if (url.searchParams.has("roomid")) {
+        const room = Number(url.searchParams.get("roomid")) // get the room and cast it to a number
         if (LOGGING) console.log("Recieved request to initially connect to room " + String(room))
         const roomValid = validateRoom(room, ws)
         if (roomValid >= 300 && ws.OPEN) return ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room))) // if the room is invalid send an error and exit the function
