@@ -342,7 +342,7 @@ wss.on("connection", (ws, req) => {
             }
 
             case "username": {
-                ROOMS[ws.xRoom].connections[ROOMS[ws.xRoom].connections.indexOf(ws.xUsername)] = data.command.meta
+                if (ws.xRoom !== -1) ROOMS[ws.xRoom].connections[ROOMS[ws.xRoom].connections.indexOf(ws.xUsername)] = data.command.meta
                 delete USERS[ws.xUsername]
                 ws.xUsername = data.command.meta
                 USERS[data.command.meta] = ws
