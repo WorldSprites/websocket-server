@@ -167,7 +167,7 @@ function createServerPacket(command, data, id, sender) {
 function validateRoom(room, sender) {
     if (typeof room !== "number") return 400 // the room need to be a number
     if (sender.xRoom === room) return 304 // already connected to that room
-    if (!Object.prototype.hasOwnProperty.call(ROOMS, room)) valid = 201 // room will be created
+    if (!Object.prototype.hasOwnProperty.call(ROOMS, String(room))) return 201 // room will be created
     
     // yeah probably fine then
     return 200
@@ -280,7 +280,7 @@ wss.on("connection", (ws, req) => {
         }
         ROOMS[room].connections.push(ws.xUsername)
         ws.xRoom = room
-        ws.send(JSON.stringify(createResponse(valid, null, null, ResponseTypes.validate, PacketTypes.room)))
+        ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room)))
         if (LOGGING) console.log("Connected client to initial room")
     }
 
