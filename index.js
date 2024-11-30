@@ -49,7 +49,8 @@ const PacketTypes = {
     username: "username",
     packet: "packet",
     room: "room",
-    userlist: "userlist"
+    userlist: "userlist",
+    uuid: "uuid"
 }
 
 /**
@@ -256,13 +257,14 @@ wss.on("connection", (ws, req) => {
     ws.isAlive = true
     ws.xRoom = -1 // not connected to a room. x(someName) denotes a non standard websocket value.
     ws.xUsername = crypto.randomUUID() // generate a uuid we can use to reference this connection until they set a username
-    USERS[ws.xUsername] = ws
+    ws.xUUID = ws.xUsername // initial username is the uuid
+    USERS[ws.xUUID] = ws
     ws.on("error", (event) => { if (LOGGING) console.error(event) })
     ws.on("pong", () => { ws.isAlive = true })
     ws.on("close", (code, reason) => {
-        if (LOGGING) console.log(`Closed connection to ${ws.xUsername} with code ${code} and reason "${reason}"`)
-        delete USERS[ws.xUsername]
-        if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections, ROOMS[ws.xRoom].connections.indexOf(ws.xUsername))
+        if (LOGGING) console.log(`Closed connection to ${ws.xUsername}(${ws.xUUID}) with code ${code} and reason "${reason}"`)
+        delete USERS[ws.xUUID]
+        if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections, ROOMS[ws.xRoom].connections.indexOf(ws.xUUID))
     })
     
     if (LOGGING) console.log("connection from url ", req.url)
@@ -278,12 +280,13 @@ wss.on("connection", (ws, req) => {
             connections: [],
             startTime: Date.now()
         }
-        ROOMS[room].connections.push(ws.xUsername)
+        ROOMS[room].connections.push(ws.xUUID)
         ws.xRoom = room
         ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room)))
         if (LOGGING) console.log("Connected client to initial room")
     }
 
+    if (ws.OPEN) ws.send(JSON.stringify(createServerPacket({ type: PacketTypes.uuid, meta: ws.xUUID }, null, Date.now(), null))) // send the client their uuid
 
     ws.on("message", (event) => {
         /**
@@ -307,7 +310,7 @@ wss.on("connection", (ws, req) => {
                         data.targets.forEach((room) => {
                             ROOMS[room].connections.forEach((connection) => connection.send(
                                 JSON.stringify(
-                                    createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUsername)
+                                    createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUUID)
                                 )
                             )) // go through each connection in the room and forward the packet
                         })
@@ -315,37 +318,34 @@ wss.on("connection", (ws, req) => {
                     else { // array of users
                         data.targets.forEach((connection) => connection.send(
                             JSON.stringify(
-                                createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUsername)
+                                createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUUID)
                             )
                         )) // go through each user and forward the packet
                     }
                 }
 
                 else { // data.targets === true, which means forward to everyone in the current room
-                    ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUsername)))) // go through each connection in the user's room and forward the packet
+                    ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUUID)))) // go through each connection in the user's room and forward the packet
                 }
                 
                 break;
             }
             
             case "room": {
-                if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections,ROOMS[ws.xRoom].connections.indexOf(ws.xUsername)) // remove the user from the room they're currently connected to
+                if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections,ROOMS[ws.xRoom].connections.indexOf(ws.xUUID)) // remove the user from the room they're currently connected to
                 ws.xRoom = data.targets[0]
                 if (!Object.prototype.hasOwnProperty(ROOMS,data.targets[0])) ROOMS[data.targets[0]] = {
                     connections: [],
                     startTime: Date.now()
                 }
 
-                ROOMS[data.targets[0]].connections.push(ws.xUsername)
+                ROOMS[data.targets[0]].connections.push(ws.xUUID)
                 ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
                 break;
             }
 
             case "username": {
-                if (ws.xRoom !== -1) ROOMS[ws.xRoom].connections[ROOMS[ws.xRoom].connections.indexOf(ws.xUsername)] = data.command.meta
-                delete USERS[ws.xUsername]
                 ws.xUsername = data.command.meta
-                USERS[data.command.meta] = ws
                 ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
                 break;
             }
@@ -363,7 +363,7 @@ const keepAliveInterval = setInterval(function ping() {
                 type: PacketTypes.userlist,
                 meta: null
             },
-            Object.values(USERS).map((user) => user.xUsername), 
+            Object.values(USERS).map((user) => { return {username: user.xUsername, uuid: user.xUUID} }), 
             Date.now(),
             null
         )))

@@ -4,7 +4,7 @@ const client = new WS.WebSocket("ws://localhost:1958?roomid=1234"/* + String(por
 let successes = 0
 console.log(client.url)
 const INITIALCONNECTION = new URL(client.url).searchParams.has("roomid")
-
+let UUID
 
 function setUsername(name) {
     if (client.OPEN) client.send(JSON.stringify({
@@ -139,6 +139,12 @@ client.on("message", (rawData) => {
                 }
                 case "userlist": {
                     console.log("Recieved userlist from server", data)
+                    break;
+                }
+
+                case "uuid": {
+                    console.log("recieved uuid with packet", data)
+                    UUID = data.command.meta
                     break;
                 }
 
