@@ -4,6 +4,7 @@ const MAXUSERNAMESIZE = 200 // in bytes
 const port = 1958 // port  the server runs on
 const LOGGING = true // whether to log debug stuff
 const ALLOWUSERNAMECHANGE = false; // if this is set to false, only allow one username set(this doesn't apply if the setting fails)
+const ALLOWROOMCHANGE = false; // if this is set to false, do not allow clients to set their room and only allow the initial connection.
 
 const WS = require("ws")
 const crypto = require("crypto")
@@ -235,6 +236,7 @@ function validateIncomingPacket(data, sender) {
         }
 
         case "room": {
+            if (!ALLOWROOMCHANGE) return 403 // not allowed to change room
             const roomValid = validateRoom(data.targets[0], sender)
             if (!data?.id) return 400 // needs to have a way to respond to the packet
             if (roomValid >= 300) return roomValid // if there was an error here return it
@@ -249,7 +251,7 @@ function validateIncomingPacket(data, sender) {
             if (typeof data?.data !== "string") return 400 // you need to provide a username to set, must be a string\
             if (Object.prototype.hasOwnProperty.call(USERS, data.data)) return 409 // username taken
             if (byteSize(data.data) > MAXUSERNAMESIZE) return 413 // too thicc
-            if (sender.xUsername !== sender.xUUID) return 423 // already set their username
+            if (sender.xUsername !== sender.xUUID && !ALLOWUSERNAMECHANGE) return 423 // already set their username
 
             // probably fine
             break
