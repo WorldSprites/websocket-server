@@ -4,6 +4,7 @@ const client = new WS.WebSocket("ws://localhost:1958?roomid=1234"/* + String(por
 let successes = 0
 console.log(client.url)
 const INITIALCONNECTION = new URL(client.url).searchParams.has("roomid")
+let NUMTESTSOFFSET = Number(INITIALCONNECTION)
 let UUID
 
 function setUsername(name) {
@@ -29,6 +30,19 @@ function connectToRoom(room) {
         id: Date.now()
     }))
 }
+
+function requestInfo() {
+    if (client.OPEN) client.send(JSON.stringify({
+        command: {
+            type: "info",
+            meta: null
+        },
+        targets: null,
+        data: null,
+        id: Date.now()
+    }))
+}
+
 const tests = [
     // () => { console.log("connecting to room..."); connectToRoom(1295) },
     () => { console.log("setting username..."); setUsername(String(Math.round(Math.random()* 250))) },
@@ -38,7 +52,8 @@ const tests = [
             hello: "world",
             ohio: "rizzler"
         }, true)
-    }
+    },
+    () => { console.log("requesting client info..."); requestInfo()}
 ]
 const numTests = tests.length
 
@@ -122,6 +137,12 @@ client.on("message", (rawData) => {
                     break;
                 }
 
+                case "info": {
+                    successes++
+                    console.log("Recieved client info:",data)
+                    break;
+                }
+
                 default: {
                     console.error("Invalid response packet recieved!", data)
                 }
@@ -143,6 +164,8 @@ client.on("message", (rawData) => {
                 }
 
                 case "uuid": {
+                    successes++
+                    NUMTESTSOFFSET++
                     console.log("recieved uuid with packet", data)
                     UUID = data.data
 
@@ -164,5 +187,5 @@ client.on("message", (rawData) => {
     }
 
     if (data?.command?.type !== "userlist" && tests.length > 0) tests.shift()() // this is probably some of the freakiest syntax i have ever used.
-    else if (tests.length < 1 && data?.command?.type !== "userlist") console.log(`\n\nTesting completed with ${successes}/${numTests + Number(INITIALCONNECTION)} tests successful`)
+    else if (tests.length < 1 && data?.command?.type !== "userlist") console.log(`\n\nTesting completed with ${successes}/${numTests + NUMTESTSOFFSET} tests successful`)
 })

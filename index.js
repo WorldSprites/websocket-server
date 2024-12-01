@@ -30,6 +30,12 @@ response: forward/packet, any
 "room" - Connect to the first room in the provided target list, and create it if it doesn't exist
 response: validate, a response code based on whether that connection happened
 
+"info" - Request client info. Doesn't need any data or targets, client info is in the response's data.
+response's data:
+uuid: UUID
+username: username
+room: roomID
+
 on connection user is sent a packet containing a username in the data and a type of -1.
 */
 
@@ -39,7 +45,8 @@ on connection user is sent a packet containing a username in the data and a type
  */
 const ResponseTypes = {
     forward: "forward",
-    validate: "validate"
+    validate: "validate",
+    info: "info"
 }
 /**
  * @readonly
@@ -50,7 +57,8 @@ const PacketTypes = {
     packet: "packet",
     room: "room",
     userlist: "userlist",
-    uuid: "uuid"
+    uuid: "uuid",
+    info: "info"
 }
 
 /**
@@ -228,6 +236,7 @@ function validateIncomingPacket(data, sender) {
 
         case "room": {
             const roomValid = validateRoom(data.targets[0], sender)
+            if (!data?.id) return 400 // needs to have a way to respond to the packet
             if (roomValid >= 300) return roomValid // if there was an error here return it
             valid = roomValid // otherwise use this as the validity
             
@@ -236,13 +245,19 @@ function validateIncomingPacket(data, sender) {
         }
 
         case "username": { // todo: this might introduce a race condition, maybe account for that?
-            if (typeof data?.data !== "string") return 400 // you need to provide a username to set, must be a string
+            if (!data?.id) return 400 // needs to have a way to respond to the packet
+            if (typeof data?.data !== "string") return 400 // you need to provide a username to set, must be a string\
             if (Object.prototype.hasOwnProperty.call(USERS, data.data)) return 409 // username taken
             if (byteSize(data.data) > MAXUSERNAMESIZE) return 413 // too thicc
             if (sender.xUsername !== sender.xUUID) return 423 // already set their username
 
             // probably fine
             break
+        }
+
+        case "info": {
+            if (!data?.id) return 400
+            break // this doesn't need anything besides a packet id ¯\_(ツ)_/¯
         }
 
         default: {
@@ -348,6 +363,15 @@ wss.on("connection", (ws, req) => {
             case "username": {
                 ws.xUsername = data.data
                 ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
+                break;
+            }
+
+            case "info": {
+                ws.send(JSON.stringify(createResponse(valid, {
+                    uuid: ws.xUUID,
+                    username: ws.xUsername,
+                    room: ws.xRoom
+                }, data.id, ResponseTypes.info, data.command.type)))
                 break;
             }
         }
