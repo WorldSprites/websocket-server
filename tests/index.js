@@ -47,13 +47,14 @@ const tests = [
     // () => { console.log("connecting to room..."); connectToRoom(1295) },
     () => { console.log("setting username..."); setUsername(String(Math.round(Math.random()* 250))) },
     () => {
-        console.log("sending dummy packet...")
+        console.log("sending dummy packet(this should fail)...")
         sendPacket({
             hello: "world",
             ohio: "rizzler"
-        }, true)
+        }, [1234]) // this should fail
     },
-    () => { console.log("requesting client info..."); requestInfo()}
+    () => { console.log("requesting client info..."); requestInfo()},
+    () => { console.log("attempting room change(this should fail)..."); connectToRoom(4321); }
 ]
 const numTests = tests.length
 
@@ -121,7 +122,6 @@ client.on("message", (rawData) => {
                     break;
                 }
                 case "packet": {
-                    numTests++
                     if (data?.status >= 300) {
                         console.log("packet sent unsuccessfully with response", data)
                     }
