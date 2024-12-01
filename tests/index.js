@@ -10,10 +10,10 @@ function setUsername(name) {
     if (client.OPEN) client.send(JSON.stringify({
         command: {
             type: "username",//PacketTypes.username,
-            meta: name
+            meta: null
         },
         targets: null,
-        data: null,
+        data: name,
         id: Date.now()
     }))
 }
@@ -144,7 +144,9 @@ client.on("message", (rawData) => {
 
                 case "uuid": {
                     console.log("recieved uuid with packet", data)
-                    UUID = data.command.meta
+                    UUID = data.data
+
+                    console.log(`\nThis client's UUID is ${UUID}\n`)
                     break;
                 }
 

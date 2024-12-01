@@ -3,7 +3,7 @@ const MAXPACKETSIZE = 2500  // in bytes
 const MAXUSERNAMESIZE = 200 // in bytes
 const port = 1958 // port  the server runs on
 const LOGGING = true // whether to log debug stuff
-
+const ALLOWUSERNAMECHANGE = false; // if this is set to false, only allow one username set(this doesn't apply if the setting fails)
 
 const WS = require("ws")
 const crypto = require("crypto")
@@ -19,13 +19,13 @@ const wss = new WS.WebSocketServer({
 command.type values. how do i do this with jsdoc.
 
 "username" - Requests a username to be set
-meta: String for the username
+data: String for the username
 
 response: 
-validate, if the username is already taken or something else, respond with an error code. otherwise 202(accepted)
+validate, if the username is already taken or something else, respond with an error code. otherwise 200
 
 "packet" - A packet which will be forwarded to the provided targets.
-response: forward, any
+response: forward/packet, any
 
 "room" - Connect to the first room in the provided target list, and create it if it doesn't exist
 response: validate, a response code based on whether that connection happened
@@ -236,9 +236,10 @@ function validateIncomingPacket(data, sender) {
         }
 
         case "username": { // todo: this might introduce a race condition, maybe account for that?
-            if (typeof data.command?.meta !== "string") return 400 // you need to provide a username to set, must be a string
-            if (Object.prototype.hasOwnProperty.call(USERS, data.command.meta)) return 409 // username taken
-            if (byteSize(data.command.meta) > MAXUSERNAMESIZE) return 413 // too thicc
+            if (typeof data?.data !== "string") return 400 // you need to provide a username to set, must be a string
+            if (Object.prototype.hasOwnProperty.call(USERS, data.data)) return 409 // username taken
+            if (byteSize(data.data) > MAXUSERNAMESIZE) return 413 // too thicc
+            if (sender.xUsername !== sender.xUUID) return 423 // already set their username
 
             // probably fine
             break
@@ -286,7 +287,7 @@ wss.on("connection", (ws, req) => {
         if (LOGGING) console.log("Connected client to initial room")
     }
 
-    if (ws.OPEN) ws.send(JSON.stringify(createServerPacket({ type: PacketTypes.uuid, meta: ws.xUUID }, null, Date.now(), null))) // send the client their uuid
+    if (ws.OPEN) ws.send(JSON.stringify(createServerPacket({ type: PacketTypes.uuid, meta: null }, ws.xUUID, Date.now(), null))) // send the client their uuid
 
     ws.on("message", (event) => {
         /**
@@ -310,7 +311,7 @@ wss.on("connection", (ws, req) => {
                         data.targets.forEach((room) => {
                             ROOMS[room].connections.forEach((connection) => connection.send(
                                 JSON.stringify(
-                                    createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUUID)
+                                    createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)
                                 )
                             )) // go through each connection in the room and forward the packet
                         })
@@ -318,14 +319,14 @@ wss.on("connection", (ws, req) => {
                     else { // array of users
                         data.targets.forEach((connection) => connection.send(
                             JSON.stringify(
-                                createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUUID)
+                                createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)
                             )
                         )) // go through each user and forward the packet
                     }
                 }
 
                 else { // data.targets === true, which means forward to everyone in the current room
-                    ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: null}, data.data, data.id, ws.xUUID)))) // go through each connection in the user's room and forward the packet
+                    ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)))) // go through each connection in the user's room and forward the packet
                 }
                 
                 break;
@@ -345,7 +346,7 @@ wss.on("connection", (ws, req) => {
             }
 
             case "username": {
-                ws.xUsername = data.command.meta
+                ws.xUsername = data.data
                 ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
                 break;
             }
@@ -354,6 +355,7 @@ wss.on("connection", (ws, req) => {
 })
 
 const keepAliveInterval = setInterval(function ping() {
+    if (LOGGING) console.log(`${Date.now()} - Keepalive tick`)
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate()
         if (LOGGING) console.log("Sent keepalive packet to " + ws.xUsername)

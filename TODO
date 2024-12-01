@@ -1,3 +1,9 @@
- - websocket streams?
- - some sort of packet verification system, forwarding any packet without checking it is kinda insecure
- - seperate initial room connection type from explicit connections
+[ ] websocket streams?
+
+[ ] some sort of packet verification system, forwarding any packet without checking it is kinda insecure
+
+[ ] seperate initial room connection type from explicit connections
+
+[x] remove uses of command.meta
+
+[x] add an option to not allow username changes
