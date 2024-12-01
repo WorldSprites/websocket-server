@@ -5,6 +5,7 @@ const port = 1958 // port  the server runs on
 const LOGGING = true // whether to log debug stuff
 const ALLOWUSERNAMECHANGE = false; // if this is set to false, only allow one username set(this doesn't apply if the setting fails)
 const ALLOWROOMCHANGE = false; // if this is set to false, do not allow clients to set their room and only allow the initial connection.
+const ALLOWCROSSROOMMESSAGING = false; // if this is set to false, do not allow targets of room ids.
 
 const WS = require("ws")
 const crypto = require("crypto")
@@ -213,7 +214,7 @@ function validateIncomingPacket(data, sender) {
 
             if (Array.isArray(data.targets)) { // it's a list of either rooms or users
                 if (typeof data.targets[0] === "number") { // a list of rooms
-
+                    if (!ALLOWCROSSROOMMESSAGING) return 403 // don't allow cross room messaging
                     for (let i = 0; i < data.targets.length; i++) {
                         if (typeof data.targets[i] !== "number") return 400 // all targets must be the same type, you can't mix and match
                         if (!Object.prototype.hasOwnProperty.call(ROOMS, data.targets[i])) return 404 // the room needs to exist, duh
