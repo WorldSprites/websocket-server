@@ -31,7 +31,7 @@ function connectToRoom(room) {
 }
 const tests = [
     // () => { console.log("connecting to room..."); connectToRoom(1295) },
-    () => { console.log("setting username..."); setUsername("skibidi toilet") },
+    () => { console.log("setting username..."); setUsername(String(Math.round(Math.random()* 250))) },
     () => {
         console.log("sending dummy packet...")
         sendPacket({

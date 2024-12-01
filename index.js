@@ -276,8 +276,7 @@ wss.on("connection", (ws, req) => {
         const roomValid = validateRoom(room, ws)
         if (roomValid >= 300 && ws.OPEN) return ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room))) // if the room is invalid send an error and exit the function
         
-
-        if (!Object.prototype.hasOwnProperty(ROOMS,room)) ROOMS[room] = {
+        if (!Object.prototype.hasOwnProperty.call(ROOMS,String(room))) ROOMS[room] = {
             connections: [],
             startTime: Date.now()
         }
@@ -326,6 +325,7 @@ wss.on("connection", (ws, req) => {
                 }
 
                 else { // data.targets === true, which means forward to everyone in the current room
+                    if (LOGGING) console.log("Forwarding packet to users", ROOMS[ws.xRoom].connections)
                     ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)))) // go through each connection in the user's room and forward the packet
                 }
                 
