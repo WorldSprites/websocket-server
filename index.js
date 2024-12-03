@@ -171,6 +171,21 @@ function createServerPacket(command, data, id, sender) {
 }
 
 /**
+ * @param {Room} room The room to generate a user list ofr
+ * @returns {String}
+ */
+function userlist(room) {
+    return JSON.stringify(createServerPacket({
+            type: PacketTypes.userlist,
+            meta: null
+        },
+        room.connections.map((id) => { return {username: USERS[id].xUsername, uuid: USERS[id].xUUID} }), 
+        Date.now(),
+        null
+    ))
+}
+
+/**
  * 
  * @param {Number} room The room to validate
  * @param {WS.WebSocket} sender The sender of the packet
@@ -398,24 +413,29 @@ wss.on("connection", (ws, req) => {
 const keepAliveInterval = setInterval(function ping() {
     if (LOGGING) console.log(`${Date.now()} - Keepalive tick`)
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) return ws.terminate()
-        if (LOGGING) console.log("Sent keepalive packet to " + ws.xUsername)
-        ws.isAlive = false
-        ws.ping() // websocket clients automatically return pongs, which will trigger the ws.on("pong") event.
-        if (ws.xPackets >= MAXPACKETSPERTIME*2) {
-            if (LOGGING) console.warn(`Disconnected client ${ws.xUUID}(${ws.xUsername}) for exceeding ratelimit with ${ws.xPackets} in the given time.`)
-                return ws.close(1008,"Ratelimit exceeded")
+        try {
+            if (ws.isAlive === false) return ws.terminate()
+            if (LOGGING) console.log("Sent keepalive packet to " + ws.xUsername)
+            ws.isAlive = false
+            ws.ping() // websocket clients automatically return pongs, which will trigger the ws.on("pong") event.
+            if (ws.xPackets >= MAXPACKETSPERTIME*2) {
+                if (LOGGING) console.warn(`Disconnected client ${ws.xUUID}(${ws.xUsername}) for exceeding ratelimit with ${ws.xPackets} in the given time.`)
+                    return ws.close(1008,"Ratelimit exceeded")
+            }
+            ws.xPackets = 0
         }
-        ws.xPackets = 0
+        catch (error) {
+            console.error("Failed on keepalive with error for client", error, ws)
+        }
         
-        ws.send(JSON.stringify(createServerPacket({
-                type: PacketTypes.userlist,
-                meta: null
-            },
-            Object.values(USERS).map((user) => { return {username: user.xUsername, uuid: user.xUUID} }), 
-            Date.now(),
-            null
-        )))
+    
+    })
+
+    Object.values(ROOMS).forEach((room) => {
+        const l = userlist(room)
+        room.connections.forEach((id) => USERS[id].send(l)) 
+        
+        
     })
 }, KEEPALIVETIME)
 
