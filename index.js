@@ -317,65 +317,75 @@ wss.on("connection", (ws, req) => {
         catch {
             if (LOGGING) console.error("Invalid message")
         }
-        if (LOGGING) console.log("recieved message with data", data)
-        const valid = validateIncomingPacket(data, ws)
-        if (valid >= 300) return ws.send(JSON.stringify(createResponse(valid, null, data?.id, "validate", data?.command?.type ?? "INVALID"))) // errored, send a response and return
+        try {
+            if (LOGGING) console.log("recieved message with data", data)
+            const valid = validateIncomingPacket(data, ws)
+            if (valid >= 300) return ws.send(JSON.stringify(createResponse(valid, null, data?.id, "validate", data?.command?.type ?? "INVALID"))) // errored, send a response and return
 
-        switch (data.command.type) {
-            case "packet": {
-                if (Array.isArray(data.targets)) {
-                    if (typeof data.targets[0] == "number") { // array of rooms   
-                        data.targets.forEach((room) => {
-                            ROOMS[room].connections.forEach((connection) => connection.send(
+            switch (data.command.type) {
+                case "packet": {
+                    if (Array.isArray(data.targets)) {
+                        if (typeof data.targets[0] == "number") { // array of rooms   
+                            data.targets.forEach((room) => {
+                                ROOMS[room].connections.forEach((connection) => connection.send(
+                                    JSON.stringify(
+                                        createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)
+                                    )
+                                )) // go through each connection in the room and forward the packet
+                            })
+                        }
+                        else { // array of users
+                            data.targets.forEach((connection) => USERS[connection].send(
                                 JSON.stringify(
                                     createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)
                                 )
-                            )) // go through each connection in the room and forward the packet
-                        })
+                            )) // go through each user and forward the packet
+                        }
                     }
-                    else { // array of users
-                        data.targets.forEach((connection) => connection.send(
-                            JSON.stringify(
-                                createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)
-                            )
-                        )) // go through each user and forward the packet
-                    }
-                }
 
-                else { // data.targets === true, which means forward to everyone in the current room
-                    if (LOGGING) console.log("Forwarding packet to users", ROOMS[ws.xRoom].connections)
-                    ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)))) // go through each connection in the user's room and forward the packet
+                    else { // data.targets === true, which means forward to everyone in the current room
+                        if (LOGGING) console.log("Forwarding packet to users", ROOMS[ws.xRoom].connections)
+                        ROOMS[ws.xRoom].connections.forEach((connection) => USERS[connection].send(JSON.stringify(createServerPacket({type: PacketTypes.packet, meta: data?.command?.meta}, data.data, data.id, ws.xUUID)))) // go through each connection in the user's room and forward the packet
+                    }
+                    
+                    break;
                 }
                 
-                break;
-            }
-            
-            case "room": {
-                if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections,ROOMS[ws.xRoom].connections.indexOf(ws.xUUID)) // remove the user from the room they're currently connected to
-                ws.xRoom = data.targets[0]
-                if (!Object.prototype.hasOwnProperty(ROOMS,data.targets[0])) ROOMS[data.targets[0]] = {
-                    connections: [],
-                    startTime: Date.now()
+                case "room": {
+                    if (ws.xRoom !== -1) popIndex(ROOMS[ws.xRoom].connections,ROOMS[ws.xRoom].connections.indexOf(ws.xUUID)) // remove the user from the room they're currently connected to
+                    ws.xRoom = data.targets[0]
+                    if (!Object.prototype.hasOwnProperty(ROOMS,data.targets[0])) ROOMS[data.targets[0]] = {
+                        connections: [],
+                        startTime: Date.now()
+                    }
+
+                    ROOMS[data.targets[0]].connections.push(ws.xUUID)
+                    ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
+                    break;
                 }
 
-                ROOMS[data.targets[0]].connections.push(ws.xUUID)
-                ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
-                break;
-            }
+                case "username": {
+                    ws.xUsername = data.data
+                    ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
+                    break;
+                }
 
-            case "username": {
-                ws.xUsername = data.data
-                ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
-                break;
+                case "info": {
+                    ws.send(JSON.stringify(createResponse(valid, {
+                        uuid: ws.xUUID,
+                        username: ws.xUsername,
+                        room: ws.xRoom
+                    }, data.id, ResponseTypes.info, data.command.type)))
+                    break;
+                }
             }
+        }
 
-            case "info": {
-                ws.send(JSON.stringify(createResponse(valid, {
-                    uuid: ws.xUUID,
-                    username: ws.xUsername,
-                    room: ws.xRoom
-                }, data.id, ResponseTypes.info, data.command.type)))
-                break;
+        catch (error) {
+            console.error("Server failed to respond to packet with data and error", data, error)
+            if (ws?.OPEN) {
+                try { ws.send(JSON.stringify(createServerPacket({ type: "error", meta: null}, 500, Date.now(), null))) } // the sad
+                catch { }
             }
         }
     })
