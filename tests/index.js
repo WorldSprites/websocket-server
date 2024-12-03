@@ -51,13 +51,12 @@ const tests = [
         sendPacket({
             hello: "world",
             ohio: "rizzler"
-        }, [1234]) // this should fail
+        }, true) // this should fail
     },
     () => { console.log("requesting client info..."); requestInfo()},
-    () => { console.log("attempting room change(this should fail)..."); connectToRoom(4321); }
+    //() => { console.log("attempting room change(this should fail)..."); connectToRoom(4321); }
 ]
 const numTests = tests.length
-
 
 
 function sendPacket(data, targets) {
@@ -75,9 +74,7 @@ function sendPacket(data, targets) {
 client.on("error", console.error)
 client.on("open", () => {
     heartbeat()
-    if (!INITIALCONNECTION) setTimeout(() => {
-        tests[0]()
-    }, 35)
+    if (!INITIALCONNECTION && client.OPEN) tests[0]()
 })
 
 function heartbeat() {

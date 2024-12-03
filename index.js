@@ -1,4 +1,5 @@
 const KEEPALIVETIME = 12500 // in milliseconds, also used to update the userlist
+const MAXPACKETSPERTIME = 375 // maximum number of packets in KEEPALIVETIME, this default value is 30/second
 const MAXPACKETSIZE = 2500  // in bytes
 const MAXUSERNAMESIZE = 200 // in bytes
 const port = 1958 // port  the server runs on
@@ -277,6 +278,7 @@ wss.on("connection", (ws, req) => {
     ws.xRoom = -1 // not connected to a room. x(someName) denotes a non standard websocket value.
     ws.xUsername = crypto.randomUUID() // generate a uuid we can use to reference this connection until they set a username
     ws.xUUID = ws.xUsername // initial username is the uuid
+    ws.xPackets = 0 // number of packets sent in the given time frame
     USERS[ws.xUUID] = ws
     ws.on("error", (event) => { if (LOGGING) console.error(event) })
     ws.on("pong", () => { ws.isAlive = true })
@@ -307,6 +309,8 @@ wss.on("connection", (ws, req) => {
     if (ws.OPEN) ws.send(JSON.stringify(createServerPacket({ type: PacketTypes.uuid, meta: null }, ws.xUUID, Date.now(), null))) // send the client their uuid
 
     ws.on("message", (event) => {
+        ws.xPackets++
+        if (ws.xPackets > MAXPACKETSPERTIME && ws.OPEN) ws.send(createResponse(429, null, null, "validate", null)) // ratelimiting, this is before data parsing to avoid unnecessary resource usage
         /**
          * @type {ClientPacket}
          */
@@ -398,6 +402,12 @@ const keepAliveInterval = setInterval(function ping() {
         if (LOGGING) console.log("Sent keepalive packet to " + ws.xUsername)
         ws.isAlive = false
         ws.ping() // websocket clients automatically return pongs, which will trigger the ws.on("pong") event.
+        if (ws.xPackets >= MAXPACKETSPERTIME*2) {
+            if (LOGGING) console.warn(`Disconnected client ${ws.xUUID}(${ws.xUsername}) for exceeding ratelimit with ${ws.xPackets} in the given time.`)
+                return ws.close(1008,"Ratelimit exceeded")
+        }
+        ws.xPackets = 0
+        
         ws.send(JSON.stringify(createServerPacket({
                 type: PacketTypes.userlist,
                 meta: null
