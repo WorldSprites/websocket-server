@@ -325,7 +325,7 @@ wss.on("connection", (ws, req) => {
 
     ws.on("message", (event) => {
         ws.xPackets++
-        if (ws.xPackets > MAXPACKETSPERTIME && ws.OPEN) ws.send(createResponse(429, null, null, "validate", null)) // ratelimiting, this is before data parsing to avoid unnecessary resource usage
+        if (ws.xPackets > MAXPACKETSPERTIME && ws.OPEN) ws.send(JSON.stringify(createResponse(429, null, null, "validate", null))) // ratelimiting, this is before data parsing to avoid unnecessary resource usage
         /**
          * @type {ClientPacket}
          */
