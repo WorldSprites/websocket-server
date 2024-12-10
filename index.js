@@ -315,9 +315,15 @@ wss.on("connection", (ws, req) => {
             connections: [],
             startTime: Date.now()
         }
+        const ulist = userlist(ROOMS[room])
+        ROOMS[room].connections.forEach((con) => {
+            USERS[con].send(ulist)
+        })
         ROOMS[room].connections.push(ws.xUUID)
+
         ws.xRoom = room
         ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room)))
+
         if (LOGGING) console.log("Connected client to initial room")
     }
 
@@ -377,7 +383,10 @@ wss.on("connection", (ws, req) => {
                         connections: [],
                         startTime: Date.now()
                     }
-
+                    const ulist = userlist(ROOMS[data.targets[0]])
+                    ROOMS[data.targets[0]].connections.forEach((con) => {
+                        USERS[con].send(ulist)
+                    })
                     ROOMS[data.targets[0]].connections.push(ws.xUUID)
                     ws.send(JSON.stringify(createResponse(valid, null, data.id, ResponseTypes.validate, data.command.type)))
                     break;
