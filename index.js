@@ -7,6 +7,22 @@ const LOGGING = false // whether to log debug stuff
 const ALLOWUSERNAMECHANGE = false; // if this is set to false, only allow one username set(this doesn't apply if the setting fails)
 const ALLOWROOMCHANGE = false; // if this is set to false, do not allow clients to set their room and only allow the initial connection.
 const ALLOWCROSSROOMMESSAGING = false; // if this is set to false, do not allow targets of room ids.
+const AUTH = true // if this is enabled, do not allow room connections until the user has authenticated
+const AUTHURL = "http://localhost:9846/v1/auth-token" // the url to use when authenticating
+
+/*
+POST AUTHURL
+Body: {
+    uuid: UUID,
+    token: Token
+}
+
+Response:
+Body: {
+    valid: Boolean
+}
+*/
+
 
 const WS = require("ws")
 const crypto = require("crypto")
@@ -17,6 +33,39 @@ const wss = new WS.WebSocketServer({
     port: port
 })
 
+
+/**
+ * 
+ * @param {String} uuid The uuid to check
+ * @param {String} token The token to check
+ * @returns {Promise<Boolean>} Whether the token is valid
+ */
+function authenticate(uuid, token) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const f = await fetch(AUTHURL, {
+                method: "POST",
+                body: JSON.stringify({
+                    uuid: uuid,
+                    token: token
+                }),
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            })
+            if (!f) {
+                return resolve({ result: false, status: f.status })
+            }
+            const res = await f.json()
+            console.log(!!res?.result, f.status)
+            return resolve({ result: !!res?.result, status: f.status}) // freaky
+        }
+        catch (error) {
+            if (LOGGING) console.error("Failed to authenticate:", error)
+            return resolve({ result: false, status: 500 })
+        }
+    })
+}
 
 /*
 command.type values. how do i do this with jsdoc.
@@ -38,6 +87,12 @@ response's data:
 uuid: UUID
 username: username
 room: roomID
+
+"auth" - Similar for username, except this is priviledged.
+data:
+uuid - String
+token - String
+response: data is a boolean of whether the authentication was valid.
 
 on connection user is sent a packet containing a username in the data and a type of -1.
 */
@@ -61,7 +116,8 @@ const PacketTypes = {
     room: "room",
     userlist: "userlist",
     uuid: "uuid",
-    info: "info"
+    info: "info",
+    auth: "auth"
 }
 
 /**
@@ -253,7 +309,8 @@ function validateIncomingPacket(data, sender) {
         }
 
         case "room": {
-            if (!ALLOWROOMCHANGE) return 403 // not allowed to change room
+            if (sender.xRoom !== -1 && !ALLOWROOMCHANGE) return 403 // not allowed to change room
+            if (!sender.xUUID && AUTH) return 401
             const roomValid = validateRoom(data.targets[0], sender)
             if (!data?.id) return 400 // needs to have a way to respond to the packet
             if (roomValid >= 300) return roomValid // if there was an error here return it
@@ -279,6 +336,19 @@ function validateIncomingPacket(data, sender) {
             break // this doesn't need anything besides a packet id ¯\_(ツ)_/¯
         }
 
+        case "auth": {
+            if (!AUTH) return 423
+            if (sender.xRoom !== -1) return 406
+            if (!data?.data) return 400
+            if (typeof data.data !== "object") return 400
+            if (!Object.prototype.hasOwnProperty.call(data.data, "uuid")) return 400
+            if (!Object.prototype.hasOwnProperty.call(data.data, "token")) return 400
+            if (typeof data.data.uuid  !== "string") return 400
+            if (typeof data.data.token !== "string") return 400
+
+            break
+        }
+
         default: {
             if (LOGGING) console.error("Unimplemented packet type " + data.command.type)
             return 501 // whoopsies i frogot to implement it
@@ -291,8 +361,8 @@ function validateIncomingPacket(data, sender) {
 wss.on("connection", (ws, req) => {
     ws.isAlive = true
     ws.xRoom = -1 // not connected to a room. x(someName) denotes a non standard websocket value.
-    ws.xUsername = crypto.randomUUID() // generate a uuid we can use to reference this connection until they set a username
-    ws.xUUID = ws.xUsername // initial username is the uuid
+    ws.xUsername = AUTH ? null : crypto.randomUUID() // generate a uuid we can use to reference this connection until they set a username
+    ws.xUUID = AUTH ? null : ws.xUsername // initial username is the uuid
     ws.xPackets = 0 // number of packets sent in the given time frame
     USERS[ws.xUUID] = ws
     ws.on("error", (event) => { if (LOGGING) console.error(event) })
@@ -306,32 +376,37 @@ wss.on("connection", (ws, req) => {
     if (LOGGING) console.log("connection from url ", req.url)
     const url = new URL(`https://localhost:${port}` + req.url)
     if (url.searchParams.has("roomid")) {
-        const room = Number(url.searchParams.get("roomid")) // get the room and cast it to a number
-        if (LOGGING) console.log("Recieved request to initially connect to room " + String(room))
-        const roomValid = validateRoom(room, ws)
-        if (roomValid >= 300 && ws.OPEN) return ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room))) // if the room is invalid send an error and exit the function
-        
-        if (!Object.prototype.hasOwnProperty.call(ROOMS,String(room))) ROOMS[room] = {
-            connections: [],
-            startTime: Date.now()
+        if (AUTH) {
+            ws.send(JSON.stringify(createResponse(403, null, null, ResponseTypes.validate, PacketTypes.room))) // if auth mode is enabled, require the user to authenticate before joining a room
         }
-        const ulist = userlist(ROOMS[room])
-        ROOMS[room].connections.forEach((con) => {
-            USERS[con].send(ulist)
-        })
-        ROOMS[room].connections.push(ws.xUUID)
-
-        ws.xRoom = room
-        ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room)))
-
-        if (LOGGING) console.log("Connected client to initial room")
+        else {
+            const room = Number(url.searchParams.get("roomid")) // get the room and cast it to a number
+            if (LOGGING) console.log("Recieved request to initially connect to room " + String(room))
+            const roomValid = validateRoom(room, ws)
+            if (roomValid >= 300 && ws.OPEN) return ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room))) // if the room is invalid send an error and exit the function
+            
+            if (!Object.prototype.hasOwnProperty.call(ROOMS,String(room))) ROOMS[room] = {
+                connections: [],
+                startTime: Date.now()
+            }
+            const ulist = userlist(ROOMS[room])
+            ROOMS[room].connections.forEach((con) => {
+                USERS[con].send(ulist)
+            })
+            ROOMS[room].connections.push(ws.xUUID)
+    
+            ws.xRoom = room
+            ws.send(JSON.stringify(createResponse(roomValid, null, null, ResponseTypes.validate, PacketTypes.room)))
+    
+            if (LOGGING) console.log("Connected client to initial room")
+        }
     }
+    if (ws.OPEN && !AUTH) ws.send(JSON.stringify(createServerPacket({ type: PacketTypes.uuid, meta: null }, ws.xUUID, Date.now(), null))) // send the client their uuid
 
-    if (ws.OPEN) ws.send(JSON.stringify(createServerPacket({ type: PacketTypes.uuid, meta: null }, ws.xUUID, Date.now(), null))) // send the client their uuid
-
-    ws.on("message", (event) => {
+    ws.on("message", async (event) => {
         ws.xPackets++
         if (ws.xPackets > MAXPACKETSPERTIME && ws.OPEN) ws.send(JSON.stringify(createResponse(429, null, null, "validate", null))) // ratelimiting, this is before data parsing to avoid unnecessary resource usage
+        
         /**
          * @type {ClientPacket}
          */
@@ -405,6 +480,22 @@ wss.on("connection", (ws, req) => {
                         room: ws.xRoom
                     }, data.id, ResponseTypes.info, data.command.type)))
                     break;
+                }
+
+                case "auth": { // if auth mode is enabled you need to be in the home room(-1, invalid) so you don't mess with anything.
+                    const a = await authenticate(data.data.uuid, data.data.token)
+                    if (a.result) {
+                        delete USERS[ws.xUUID]
+                        USERS[data.data.uuid] = ws
+                        ws.xUUID = data.data.uuid
+                        ws.xUsername = data.data.uuid
+                        ws.send(JSON.stringify(createResponse(a.status, a.result, data.id, ResponseTypes.validate, data.command.type)))
+                        break;
+                    }
+                    else {
+                        console.error("erm what the sigma")
+                        ws.send(JSON.stringify(createResponse(a.status, a.result, data.id, ResponseTypes.validate, data.command.type)))
+                    }
                 }
             }
         }
