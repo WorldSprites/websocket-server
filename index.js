@@ -1,5 +1,5 @@
 const KEEPALIVETIME = 12500 // in milliseconds, also used to update the userlist
-const MAXPACKETSPERTIME = 375 // maximum number of packets in KEEPALIVETIME, this default value is 30/second
+const MAXPACKETSPERTIME = 500 // maximum number of packets in KEEPALIVETIME, this default value is 40/second
 const MAXPACKETSIZE = 2500  // in bytes
 const MAXUSERNAMESIZE = 200 // in bytes
 const port = 1958 // port  the server runs on
