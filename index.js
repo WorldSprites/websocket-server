@@ -7,7 +7,7 @@ const LOGGING = false // whether to log debug stuff
 const ALLOWUSERNAMECHANGE = false; // if this is set to false, only allow one username set(this doesn't apply if the setting fails)
 const ALLOWROOMCHANGE = false; // if this is set to false, do not allow clients to set their room and only allow the initial connection.
 const ALLOWCROSSROOMMESSAGING = false; // if this is set to false, do not allow targets of room ids.
-const AUTH = true // if this is enabled, do not allow room connections until the user has authenticated
+const AUTH = false // if this is enabled, do not allow room connections until the user has authenticated
 const AUTHURL = "http://localhost:9846/v1/auth-token" // the url to use when authenticating
 
 /*
@@ -54,10 +54,11 @@ function authenticate(uuid, token) {
                 }
             })
             if (!f) {
+                if (LOGGING) console.error(`Failed to authenticate ${uuid} with token ${token}`)
                 return resolve({ result: false, status: f.status })
             }
             const res = await f.json()
-            console.log(!!res?.result, f.status)
+            
             return resolve({ result: !!res?.result, status: f.status}) // freaky
         }
         catch (error) {
@@ -264,6 +265,8 @@ function validateRoom(room, sender) {
  */
 function validateIncomingPacket(data, sender) {
     let valid = 200
+    
+    if (byteSize(data?.data) > MAXPACKETSIZE) return 413 // too thicc
     if (typeof data?.command !== "object") return 400 // command must be included
     if (!data.command.type) return 400 // command must have a command type
     if (!Object.prototype.hasOwnProperty.call(PacketTypes, data.command.type)) return 400 // invalid packet
@@ -304,7 +307,6 @@ function validateIncomingPacket(data, sender) {
 
             }
 
-            if (byteSize(data.data) > MAXPACKETSIZE) return 413 // too thicc
             break;
         }
 
@@ -364,6 +366,9 @@ wss.on("connection", (ws, req) => {
     ws.xUsername = AUTH ? null : crypto.randomUUID() // generate a uuid we can use to reference this connection until they set a username
     ws.xUUID = AUTH ? null : ws.xUsername // initial username is the uuid
     ws.xPackets = 0 // number of packets sent in the given time frame
+    ws.xRateLimited = false
+
+
     USERS[ws.xUUID] = ws
     ws.on("error", (event) => { if (LOGGING) console.error(event) })
     ws.on("pong", () => { ws.isAlive = true })
@@ -405,7 +410,10 @@ wss.on("connection", (ws, req) => {
 
     ws.on("message", async (event) => {
         ws.xPackets++
-        if (ws.xPackets > MAXPACKETSPERTIME && ws.OPEN) ws.send(JSON.stringify(createResponse(429, null, null, "validate", null))) // ratelimiting, this is before data parsing to avoid unnecessary resource usage
+        if (ws.xPackets > MAXPACKETSPERTIME && ws.OPEN && !ws.xRateLimited) { // ratelimiting, this is before data parsing to avoid unnecessary resource usage
+            ws.send(JSON.stringify(createResponse(429, null, null, "validate", null)))
+            ws.xRateLimited = true
+        }
         
         /**
          * @type {ClientPacket}
@@ -493,7 +501,6 @@ wss.on("connection", (ws, req) => {
                         break;
                     }
                     else {
-                        console.error("erm what the sigma")
                         ws.send(JSON.stringify(createResponse(a.status, a.result, data.id, ResponseTypes.validate, data.command.type)))
                     }
                 }
@@ -520,9 +527,11 @@ const keepAliveInterval = setInterval(function ping() {
             ws.ping() // websocket clients automatically return pongs, which will trigger the ws.on("pong") event.
             if (ws.xPackets >= MAXPACKETSPERTIME*2) {
                 if (LOGGING) console.warn(`Disconnected client ${ws.xUUID}(${ws.xUsername}) for exceeding ratelimit with ${ws.xPackets} in the given time.`)
-                    return ws.close(1008,"Ratelimit exceeded")
+
+                return ws.close(1008,"Ratelimit exceeded")
             }
             ws.xPackets = 0
+            ws.xRateLimited = false
         }
         catch (error) {
             console.error("Failed on keepalive with error for client", error, ws)
