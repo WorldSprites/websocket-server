@@ -1,5 +1,5 @@
-const KEEPALIVETIME = 12500 // in milliseconds, also used to update the userlist
-const MAXPACKETSPERTIME = 500 // maximum number of packets in KEEPALIVETIME, this default value is 40/second
+const KEEPALIVETIME = 10000 // in milliseconds, also used to update the userlist
+const MAXPACKETSPERTIME = 750 // maximum number of packets in KEEPALIVETIME, this default value is 75/second
 const MAXPACKETSIZE = 2500  // in bytes
 const MAXUSERNAMESIZE = 200 // in bytes
 const port = 1958 // port  the server runs on
@@ -7,7 +7,7 @@ const LOGGING = false // whether to log debug stuff
 const ALLOWUSERNAMECHANGE = false; // if this is set to false, only allow one username set(this doesn't apply if the setting fails)
 const ALLOWROOMCHANGE = false; // if this is set to false, do not allow clients to set their room and only allow the initial connection.
 const ALLOWCROSSROOMMESSAGING = false; // if this is set to false, do not allow targets of room ids.
-const AUTH = true // if this is enabled, do not allow room connections until the user has authenticated
+const AUTH = false // if this is enabled, do not allow room connections until the user has authenticated
 const AUTHURL = "http://localhost:9846/v1/auth-token" // the url to use when authenticating
 
 /*
