@@ -552,12 +552,6 @@ wss.on("close", () => {
     if (LOGGING) console.error("connection closed")
     clearInterval(keepAliveInterval)
 })
-process.on('SIGTERM', () => {
-  // Clean up resources
-  server.close(() => {
-    process.exit(0);
-  });
-});
 
 /**
  * @exports { ClientPacket, ServerPacket, ClientResponse, ServerResponse }
